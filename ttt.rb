@@ -5,20 +5,20 @@ class Player
   attr_accessor :name, :score
 
   NAMES = %w[r2d2 bob elisa].freeze
-  MOVES = %w[rock paper scissors lizard spock]
+  MOVES = { 1 =>'rock', 2 => 'paper', 3 => 'scissors', 4 => 'lizard', 5 =>'spock' }
 
   def initialize(name)
     @name = name
   end
 
   def choose
-    puts 'Choose either Rock Paper Scissors Lizard or Spock'
+    puts 'Enter a number 1-5 to make a selection: 1) Rock 2) Paper 3) Scissors 4) Lizard or 5)Spock'
   end
 end
 
 # Your comment
 class Human < Player
-  attr_accessor :move
+  attr_accessor :move, :name
 
   def initialize
     @name = pick_a_name
@@ -28,13 +28,13 @@ class Human < Player
   def choose
     super
     loop do
-      choice = gets.chomp
-      if !Player::MOVES.include? choice
-        puts 'Please choose either rock paper or scissors'
+      choice = gets.chomp.to_i
+      if !Player::MOVES[choice]
+        puts 'Please enter a number 1-5 to make a selection: 1) Rock 2) Paper 3) Scissors 4) Lizard or 5)Spock'
         next
       else
-        self.move = choice
-        puts "#{name} chose #{choice}"
+        self.move = Player::MOVES[choice]
+        puts "#{name} chose #{move}"
         break
       end
     end
@@ -44,17 +44,23 @@ class Human < Player
 
   def pick_a_name
     puts 'What is your name'
-    answer = gets.chomp
+    answer = nil
+    loop do
+      answer = gets.chomp
+      break unless answer.empty?
+      puts 'please make sure to enter a name'
+    end
+    answer
   end
 end
 
 # Your comment
 class Computer < Player
-  attr_accessor :move
+  attr_accessor :move, :name
   WINNING_MOVES = { 'rock' => 'paper',
                     'paper' => 'scissors',
                     'scissors' => 'rock',
-                    'spock' => 'paper', 
+                    'spock' => 'paper',
                     'lizard' => 'scissors' }.freeze
 
   def initialize
@@ -63,21 +69,21 @@ class Computer < Player
   end
 
   def choose(past)
-    if past.history[:h].empty?
-      self.move = Player::MOVES.sample
-    elsif
-      winning_moves = past.history[:h].group_by { |x| x.include?('w') }
-      if !winning_moves[true].nil?
-        frequency = winning_moves[true].map { |el| winning_moves[true].count(el) }
-        most_frequent_indicator = frequency.max
-        index_of_max = frequency.index(most_frequent_indicator)
-        frequently_occurring = winning_moves[true][index_of_max].sub('w', '')
+    if past.history[:human].empty?
+      self.move = Player::MOVES[rand(6)]
+    elsif !past.history[:human].group_by { |x| x.include?('w') }[true].nil?
+        winning_moves = past.history[:human].group_by { |x| x.include?('w') }[true]
+        frequently_occurring = analyze_history(winning_moves)
         self.move = WINNING_MOVES[frequently_occurring]
-      else
-        self.move = Player::MOVES.sample
-      end
     end
     puts "#{name} chose #{move}"
+  end
+
+  def analyze_history(past)
+    frequency = past.map { |el| past.count(el) }
+    most_frequent_indicator = frequency.max
+    index_of_max = frequency.index(most_frequent_indicator)
+    past[index_of_max].sub('w', '')
   end
 end
 
@@ -99,12 +105,12 @@ class MoveHistory
   attr_accessor :history
 
   def initialize
-    @history = { h: [], c: [] }
+    @history = { human: [], computer: [] }
   end
 
   def update_history(human_move, computer_move)
-    history[:h] << human_move
-    history[:c] << computer_move
+    history[:human] << human_move
+    history[:computer] << computer_move
   end
 end
 
@@ -127,12 +133,12 @@ class RPSGame
     puts 'Thanks for playing Rock Paper Scissors Lizard Spock'
   end
 
-  def detect
-    moves.select { |x| human.move == x[0] && computer.move == x[1] }
+  def detect_win_condition
+    MOVES.select { |x| human.move == x[0] && computer.move == x[1] }
   end
 
-  def compare
-    if !!detect
+  def determine_winner
+    if !!detect_win_condition
       human.name
     elsif human.move == computer.move
       'nobody'
@@ -141,18 +147,30 @@ class RPSGame
     end
   end
 
-  def display_winner
-    if compare == human.name
+  def update_score
+    if determine_winner == human.name
       human.score.update_score
-      history.update_history(human.move + 'w', computer.move)
-      puts "#{human.name} wins: score is: h: #{human.score.tally} vs c: #{computer.score.tally}"
-    elsif compare == computer.name
+    elsif determine_winner == computer.name
       computer.score.update_score
+    end
+  end
+
+  def update_history
+    if determine_winner == human.name
+      history.update_history(human.move + 'w', computer.move)
+    elsif determine_winner == computer.name
       history.update_history(human.move, computer.move + 'w')
-      puts "#{computer.name} wins: score is: c: #{computer.score.tally} vs h: #{human.score.tally}"
-    elsif compare == 'nobody'
-      puts "It's a tie"
+    elsif determine_winner == 'nobody'
       history.update_history(human.move, computer.move)
+    end
+  end
+
+  def display_winner
+    winner = determine_winner
+    if winner != 'nobody'
+      puts "#{winner} wins: score is: h: #{human.score.tally} vs c: #{computer.score.tally}"
+    else
+      puts "It's a tie"
     end
   end
 
@@ -178,6 +196,8 @@ class RPSGame
       puts "Round: #{@rounds}"
       human.choose
       computer.choose(history)
+      update_score
+      update_history
       display_winner
       break unless play_again?
     end
