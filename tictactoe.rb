@@ -1,17 +1,16 @@
 require 'pry'
-# board
+
 class Board
   attr_accessor :squares
-  WINNING_LINES = [[1, 2, 3], [4, 5, 6], [7, 8, 9]] +
-                  [[1, 4, 7], [2, 5, 8], [3, 6, 9]] +
-                  [[1, 5, 9], [3, 5, 7]]
+  WINNING_LINES = [[1, 2, 3], [4, 5, 6], [7, 8, 9], [1, 4, 7], [2, 5, 8], [3, 6, 9], [1, 5, 9], [3, 5, 7]]
+
   def initialize
     @squares = build_board
   end
 
   def build_board
     board = {}
-    board_positions= (1..9).to_a
+    board_positions = (1..9).to_a
     board_positions.each { |position| board[position] = Square.new(' ') }
     board
   end
@@ -31,21 +30,50 @@ class Board
 
   def full?
     available = squares.select { |k, v| v.marker == ' ' }.count
-    available == 0 ? true : false
+    return true if available == 0
+    false
   end
 
   def positions_remaining
     positions = []
-    squares.select { |k,v| positions << k if v.marker == ' '}
-    join_or(positions)
+    squares.select { |k,v| positions << k if v.marker == ' '}.to_a
   end
 
-  def join_or(positions)
+  def join_positions
+    positions = positions_remaining
     last = positions[-1] 
     positions[-1] = 'or'
     positions.<<(last)
-    positions.join(", ")
+    sentence = connector_method(positions)
   end
+  
+  def connector_method(positions)
+   count = 0
+   list = []
+   loop do 
+     break if count == positions.count
+     check = positions[count]
+     list << check[0] unless check[0].class == String
+     list << check if check[0].class == String
+     count += 1
+   end 
+   list.join(", ")
+  end 
+
+  def winning_marker
+    win = nil
+    WINNING_LINES.each do |line|
+      if line.select { |pos| squares[pos].marker == 'X' }.count == 3
+        win = 'X'
+      elsif line.select { |pos| squares[pos].marker == 'O' }.count == 3
+        win = 'O'
+      else 
+        nil
+      end
+    end
+    win
+  end
+
 end
 
 # cells
@@ -96,13 +124,56 @@ end
 # player type
 class Computer < Player
   attr_accessor :score, :name
+
   def initialize(name)
     @name = name
     @score = Score.new
+    # @best_choice = nil
   end
 
   def to_s
     @name
+  end
+
+  def minimax(board, current_player, depth=1)
+    return scored(board, depth) if game_over?(board) && depth >= 2 #terminal state is reached start resolving stack frames  
+
+    scores = {}
+
+    board.positions_remaining.each do |position|   
+      virtual_board = board.dup
+      virtual_board.squares[position[0]].marker = current_player 
+      scores[position[0]] = minimax(virtual_board, switch(current_player), depth + 1)
+    end
+
+    best_choice, best_score = best_move(current_player, scores)
+
+    best_score  # actual return value
+  end
+
+  def game_over?(board)
+    board.winning_marker || board.full?
+  end
+
+  def best_move(player, scores)
+    if player == 'O'
+      scores.max_by { |_, v| v }
+    elsif player == 'X'
+      scores.min_by { |_, v| v }
+    end
+  end
+
+  def scored(board , depth)
+    if board.winning_marker == 'O'
+      return 10 - depth
+    elsif board.winning_marker == 'X'
+      return depth - 10
+    end
+    0
+  end
+
+  def switch(player)
+    player == 'O' ? 'X' : 'O'
   end
 
 end
@@ -122,12 +193,13 @@ end
 # game engine
 class TTTGame
   attr_accessor :board, :human, :computer, :winner, :player_turn
+
   def initialize
     @board = Board.new
     @human = Human.new
     @computer = Computer.new('r2d2')
     @winner = nil
-    @player_turn = ''
+    @player_turn = 'human'
   end
 
   def display_welcome_message
@@ -160,70 +232,39 @@ class TTTGame
   end
 
   def first_player_moves
-    puts "Choose a position on the board from #{board.positions_remaining}"
+    puts "Choose a position on the board from #{board.join_positions}"
     move = nil
     loop do
       move = gets.chomp.to_i
       break if (1..9).include?(move) && board.position_available?(move)
-      puts "sorry, you must choose a position from #{board.positions_remaining}"
+      puts "sorry, you must choose a position from #{board.join_positions}"
     end
     board.set_position(move, 'X')
   end
 
   def second_player_moves
-    move = nil
-    loop do
-      move = (1..9).to_a.sample
-      break board.set_position(move, 'O') if board.position_available?(move)
-    end
+    move = @computer.minimax(board, 'O', 1)
+
     puts 'Computer Moved'
-  end
 
-#TODO finish implementing minimax algorithm
-  def minimax(new_board, player)
-     available_spots = board.positions_remaining
-     if winning(new_board, 'human')
-      score = -10
-     elsif winning(new_board, 'computer')
-      score = 10
-     else available_spots == 0
-       score = 0 
-     end
   end
-
+ 
   def someone_won?
-    !!winning_marker
-  end
-
-  def winning_marker
-    win = nil
-    Board::WINNING_LINES.each do |line|
-      if line.select { |pos| board.squares[pos].marker == 'X' }.count == 3
-        win = 'X'
-      elsif line.select { |pos| board.squares[pos].marker == 'O' }.count == 3
-        computer.tally.increment
-        win = 'O'
-      end
-      nil
-    end
-    win
+    !!board.winning_marker
   end
 
   def display_winner
-    if winning_marker == 'X'
+    if board.winning_marker == 'X'
       self.winner = "#{human}"
-    elsif winning_marker == 'O'
+    elsif board.winning_marker == 'O'
       self.winner = "#{computer}"
     end
     puts "#{winner} wins the game!"
   end
 
   def update_score
-    if winning_marker == 'X'
-      human.score.increment
-    elsif winning_marker == 'O'
-      computer.score.increment
-    end
+    return if board.winning_marker.nil?
+    board.winning_marker == 'X' ? human.score.increment : computer.score.increment
   end
 
   def play_again?
@@ -232,36 +273,46 @@ class TTTGame
   end
 
   def alternate_player
-    if player_turn == 'human'
-      self.player_turn = 'computer'
-      first_player_moves
-      display_board
-    elsif player_turn == 'computer'
-      self.player_turn = 'human'
-      second_player_moves
-      display_board
-    end
+    self.player_turn = (player_turn == 'human' ? 'computer' : 'human')
+  end
+
+  def turn
+     case player_turn
+      when 'human'
+        first_player_moves
+      when 'computer'
+        second_player_moves
+     end
+    alternate_player
+    display_board
+  end
+
+  def final_state?
+    board.full? || someone_won?
   end
 
   def play
-    display_welcome_message
     display_board
-    self.player_turn = 'human'
+
     loop do
       break if human.score.tally == 5 || computer.score.tally == 5
-      alternate_player
-      if board.full? || someone_won?
-        self.player_turn = 'human'
-        update_score
-        @board = Board.new
-        answer = play_again?
-        answer == 'y' ? next : break
+
+      if final_state?
+         @board = Board.new
+         answer = play_again?
+         answer == 'y' ? play : break
       end
+      
+      turn
+      update_score
     end
+
     display_winner
     display_goodbye_message
   end
+
 end
 
 game = TTTGame.new
+game.display_welcome_message
 game.play
