@@ -1,7 +1,6 @@
 require 'pry'
 
 class Board
-  attr_accessor :squares
   WINNING_LINES = [[1, 2, 3], [4, 5, 6], [7, 8, 9], [1, 4, 7], [2, 5, 8], [3, 6, 9], [1, 5, 9], [3, 5, 7]]
 
   def initialize
@@ -13,6 +12,14 @@ class Board
     board_positions = (1..9).to_a
     board_positions.each { |position| board[position] = Square.new(' ') }
     board
+  end
+
+  def dup
+    positions = {}
+    duped_board = Board.new
+    self.squares.map {|square| positions[square[0]] = Square.new(square[1].marker) }
+    duped_board.squares = positions
+    duped_board
   end
 
   def position_at(pos)
@@ -74,6 +81,10 @@ class Board
     win
   end
 
+  protected
+
+  attr_accessor :squares
+
 end
 
 # cells
@@ -123,12 +134,12 @@ end
 
 # player type
 class Computer < Player
-  attr_accessor :score, :name
+  attr_accessor :score, :name, :best_choice
 
   def initialize(name)
     @name = name
     @score = Score.new
-    # @best_choice = nil
+    @best_choice = nil
   end
 
   def to_s
@@ -140,13 +151,13 @@ class Computer < Player
 
     scores = {}
 
-    board.positions_remaining.each do |position|   
+    board.dup.positions_remaining.each do |position|   
       virtual_board = board.dup
-      virtual_board.squares[position[0]].marker = current_player 
+      virtual_board.set_position(position[0], current_player)
       scores[position[0]] = minimax(virtual_board, switch(current_player), depth + 1)
     end
 
-    best_choice, best_score = best_move(current_player, scores)
+    @best_choice, best_score = best_move(current_player, scores)
 
     best_score  # actual return value
   end
@@ -244,9 +255,9 @@ class TTTGame
 
   def second_player_moves
     move = @computer.minimax(board, 'O', 1)
+    board.set_position(@computer.best_choice, 'O')
 
     puts 'Computer Moved'
-
   end
  
   def someone_won?
